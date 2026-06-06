@@ -150,14 +150,14 @@ function openModal(item) {
   const movieSources = [
     `https://vidsrc.xyz/embed/movie?tmdb=${item.id}`,
     `https://player.vidsrc.co/embed/movie/${item.id}`,
+    `https://vidsrc.win/embed/movie?tmdb=${item.id}`,
     `https://vidlink.pro/movie/${item.id}`,
-    `https://multiembed.mov/directstream.php?video_id=${item.id}&tmdb=1`,
   ];
 
   const tvSources = [
     `https://vidsrc.xyz/embed/tv?tmdb=${item.id}`,
     `https://player.vidsrc.co/embed/tv/${item.id}`,
-    `https://multiembed.mov/directstream.php?video_id=${item.id}&tmdb=1`,
+    `https://vidsrc.win/embed/tv?tmdb=${item.id}`,
   ];
 
   if (isTV) {
@@ -275,7 +275,7 @@ function updateTvSources(tvId, season, episode, sourceSelect) {
   const sources = [
     `https://vidsrc.xyz/embed/tv?tmdb=${tvId}&season=${season}&episode=${episode}`,
     `https://player.vidsrc.co/embed/tv/${tvId}/${season}/${episode}`,
-    `https://multiembed.mov/directstream.php?video_id=${tvId}&tmdb=1&s=${season}&e=${episode}`,
+    `https://vidsrc.win/embed/tv?tmdb=${tvId}&season=${season}&episode=${episode}`,
   ];
 
   sourceSelect.innerHTML = '';
