@@ -77,6 +77,32 @@ async function searchMovies(query) {
   }
 }
 
+async function autoSelectSource(sources, sourceSelect) {
+  const iframe = document.getElementById('modalIframe');
+  iframe.src = '';
+
+  async function probe(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      await fetch(url, { mode: 'no-cors', signal: ctrl.signal });
+      clearTimeout(timer);
+      return url;
+    } catch {
+      clearTimeout(timer);
+      return null;
+    }
+  }
+
+  const winner = await Promise.any(sources.map(probe)).catch(() => null);
+  const best = winner || sources[0];
+
+  for (const opt of sourceSelect.options) {
+    if (opt.value === best) { opt.selected = true; break; }
+  }
+  iframe.src = best;
+}
+
 function getPosterUrl(posterPath) {
   if (!posterPath) return null;
   if (posterPath.startsWith('http') || posterPath.startsWith('_thumbs/')) return posterPath;
@@ -198,7 +224,7 @@ function openModal(item) {
     });
 
     controls.appendChild(sourceSelect);
-    sourceSelect.dispatchEvent(new Event('change'));
+    autoSelectSource(movieSources, sourceSelect);
   }
 
   modal.classList.add('active');
@@ -263,7 +289,7 @@ function updateTvSources(tvId, season, episode, sourceSelect) {
     }
     sourceSelect.appendChild(opt);
   });
-  sourceSelect.dispatchEvent(new Event('change'));
+  autoSelectSource(sources, sourceSelect);
 }
 
 async function loadMore() {
