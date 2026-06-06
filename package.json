@@ -1,0 +1,23 @@
+{
+  "name": "photon",
+  "version": "1.0.0",
+  "description": "Photon - Games & Proxy Browser",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build": "node build.js",
+    "postinstall": "node build.js"
+  },
+  "dependencies": {
+    "@mercuryworkshop/bare-mux": "^2.1.9",
+    "@mercuryworkshop/epoxy-transport": "^2.1.28",
+    "@mercuryworkshop/scramjet": "^1.1.0",
+    "@mercuryworkshop/wisp-js": "^0.4.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1048.0"
+  }
+}
