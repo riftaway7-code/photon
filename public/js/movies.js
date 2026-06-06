@@ -4,6 +4,7 @@ const BASE_URL = 'https://api.themoviedb.org/3';
 const moviesGrid = document.getElementById('moviesGrid');
 const searchInput = document.getElementById('searchInput');
 const typeSelect = document.getElementById('typeSelect');
+const genreSelect = document.getElementById('genreSelect');
 const modal = document.getElementById('modal');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const emptyState = document.getElementById('emptyState');
@@ -12,24 +13,54 @@ let currentPage = 1;
 let isLoading = false;
 let isSearching = false;
 let allMovies = [];
+let movieGenres = {};
+let tvGenres = {};
 
-async function fetchMovies(page = 1, type = 'all') {
+async function loadGenres() {
+  const [movieRes, tvRes] = await Promise.all([
+    fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}`).then(r => r.json()),
+    fetch(`${BASE_URL}/genre/tv/list?api_key=${API_KEY}`).then(r => r.json()),
+  ]);
+  movieGenres = Object.fromEntries((movieRes.genres || []).map(g => [g.name, g.id]));
+  tvGenres = Object.fromEntries((tvRes.genres || []).map(g => [g.name, g.id]));
+  populateGenreSelect();
+}
+
+function populateGenreSelect() {
+  const type = typeSelect.value;
+  const source = type === 'tv' ? tvGenres : type === 'movie' ? movieGenres : { ...movieGenres, ...tvGenres };
+  const current = genreSelect.value;
+  genreSelect.innerHTML = '<option value="">All Genres</option>';
+  Object.keys(source).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === current) opt.selected = true;
+    genreSelect.appendChild(opt);
+  });
+}
+
+async function fetchMovies(page = 1, type = 'all', genreName = '') {
   try {
-    let url;
+    const movieGenreId = genreName ? movieGenres[genreName] : null;
+    const tvGenreId = genreName ? tvGenres[genreName] : null;
+
+    const movieEndpoint = movieGenreId
+      ? `${BASE_URL}/discover/movie?api_key=${API_KEY}&page=${page}&with_genres=${movieGenreId}`
+      : `${BASE_URL}/movie/popular?api_key=${API_KEY}&page=${page}`;
+    const tvEndpoint = tvGenreId
+      ? `${BASE_URL}/discover/tv?api_key=${API_KEY}&page=${page}&with_genres=${tvGenreId}`
+      : `${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${page}`;
+
     if (type === 'all') {
-      const movies = await fetch(`${BASE_URL}/movie/popular?api_key=${API_KEY}&page=${page}`).then(r => r.json());
-      const tvShows = await fetch(`${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${page}`).then(r => r.json());
-      return [...(movies.results || []), ...(tvShows.results || [])].map(item => ({
-        ...item,
-        media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie')
-      }));
+      const movieFetch = (!genreName || movieGenreId) ? fetch(movieEndpoint).then(r => r.json()) : Promise.resolve({ results: [] });
+      const tvFetch = (!genreName || tvGenreId) ? fetch(tvEndpoint).then(r => r.json()) : Promise.resolve({ results: [] });
+      const [moviesRes, tvRes] = await Promise.all([movieFetch, tvFetch]);
+      return [...(moviesRes.results || []).map(i => ({ ...i, media_type: 'movie' })), ...(tvRes.results || []).map(i => ({ ...i, media_type: 'tv' }))];
     } else {
-      const endpoint = type === 'movie' ? 'movie/popular' : 'tv/popular';
-      const res = await fetch(`${BASE_URL}/${endpoint}?api_key=${API_KEY}&page=${page}`).then(r => r.json());
-      return (res.results || []).map(item => ({
-        ...item,
-        media_type: type
-      }));
+      const endpoint = type === 'movie' ? movieEndpoint : tvEndpoint;
+      const res = await fetch(endpoint).then(r => r.json());
+      return (res.results || []).map(item => ({ ...item, media_type: type }));
     }
   } catch (err) {
     console.error('Fetch error:', err);
@@ -241,7 +272,8 @@ async function loadMore() {
   loadingIndicator.style.display = 'flex';
 
   const type = typeSelect.value;
-  const items = await fetchMovies(currentPage, type);
+  const genre = genreSelect.value;
+  const items = await fetchMovies(currentPage, type, genre);
   allMovies.push(...items);
   items.forEach(createCard);
 
@@ -291,6 +323,18 @@ searchInput.addEventListener('input', () => {
 });
 
 typeSelect.addEventListener('change', () => {
+  populateGenreSelect();
+  if (searchInput.value.trim()) {
+    handleSearch();
+  } else {
+    moviesGrid.innerHTML = '';
+    allMovies = [];
+    currentPage = 1;
+    loadMore();
+  }
+});
+
+genreSelect.addEventListener('change', () => {
   if (searchInput.value.trim()) {
     handleSearch();
   } else {
@@ -310,4 +354,4 @@ window.addEventListener('scroll', () => {
 
 window.closeModal = closeModal;
 
-loadMore();
+loadGenres().then(() => loadMore());
