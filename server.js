@@ -3,13 +3,18 @@ import { createServer } from "http";
 import { get as httpsGet } from "https";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
+import { Server as SocketServer } from "socket.io";
 import { server as wispServer } from "@mercuryworkshop/wisp-js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
+// ── Photon Chat ───────────────────────────────────────────────────────────────
 const chatHistory = [];
 const CHAT_MAX = 80;
 const activeUsers = new Map();
@@ -94,35 +99,215 @@ app.get("/api/signal", (req, res) => {
 
 app.get("/api/wisp-available", (_, res) => res.json({ ok: true }));
 
-// Serve static frontend
+// ── Tension Setup (CJS modules via createRequire) ─────────────────────────────
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const GameRoom = require('./tension-server/game.js');
+const sampleLevel = require('./tension-server/levels/sample.js');
+const db = require('./tension-server/db.js');
+const { auth, SECRET } = require('./tension-server/authMiddleware.js');
+const rooms = {};
+
+function tryParseAnswers(val) {
+  try { const p = JSON.parse(val); return Array.isArray(p) ? p : [p]; } catch { return [val]; }
+}
+
+// ── Tension Auth ──────────────────────────────────────────────────────────────
+app.post('/auth/signup', async (req, res) => {
+  const { email, username, password } = req.body;
+  if (!email || !username || !password)
+    return res.status(400).json({ error: 'All fields required' });
+  if (username.trim().length > 20)
+    return res.status(400).json({ error: 'Username must be 20 characters or fewer' });
+  if (password.length < 6)
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const user = db.prepare(
+      'INSERT INTO users (email, username, password_hash) VALUES (?,?,?)'
+    ).run(email.toLowerCase().trim(), username.trim(), hash);
+    const token = jwt.sign({ id: user.lastInsertRowid, username: username.trim() }, SECRET, { expiresIn: '30d' });
+    res.json({ token, username: username.trim() });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(400).json({ error: 'Email already in use' });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'All fields required' });
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+  if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+  const match = await bcrypt.compare(password, user.password_hash);
+  if (!match) return res.status(401).json({ error: 'Invalid email or password' });
+  const token = jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: '30d' });
+  res.json({ token, username: user.username });
+});
+
+app.get('/auth/me', auth, (req, res) => res.json(req.user));
+
+// ── Tension Levels ────────────────────────────────────────────────────────────
+app.get('/api/levels', auth, (req, res) => {
+  const levels = db.prepare('SELECT id, name, is_public, created_at, updated_at FROM levels WHERE user_id = ? ORDER BY updated_at DESC').all(req.user.id);
+  res.json(levels);
+});
+
+app.get('/api/levels/:id', auth, (req, res) => {
+  const level = db.prepare('SELECT * FROM levels WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!level) return res.status(404).json({ error: 'Not found' });
+  res.json({ ...level, data: JSON.parse(level.data) });
+});
+
+app.post('/api/levels', auth, (req, res) => {
+  const { name, data, is_public } = req.body;
+  if (!name || !data) return res.status(400).json({ error: 'name and data required' });
+  const result = db.prepare(
+    'INSERT INTO levels (user_id, name, data, is_public) VALUES (?,?,?,?)'
+  ).run(req.user.id, name.trim(), JSON.stringify(data), is_public ? 1 : 0);
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/levels/:id', auth, (req, res) => {
+  const { name, data, is_public } = req.body;
+  const level = db.prepare('SELECT id FROM levels WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!level) return res.status(404).json({ error: 'Not found' });
+  db.prepare('UPDATE levels SET name=?, data=?, is_public=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .run(name.trim(), JSON.stringify(data), is_public ? 1 : 0, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/levels/:id', auth, (req, res) => {
+  db.prepare('DELETE FROM levels WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  res.json({ ok: true });
+});
+
+app.patch('/api/levels/:id/visibility', auth, (req, res) => {
+  const level = db.prepare('SELECT id, is_public FROM levels WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!level) return res.status(404).json({ error: 'Not found' });
+  const newVal = level.is_public ? 0 : 1;
+  db.prepare('UPDATE levels SET is_public=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(newVal, req.params.id);
+  res.json({ is_public: newVal });
+});
+
+// ── Tension Questions ─────────────────────────────────────────────────────────
+app.get('/api/questions', auth, (req, res) => {
+  const qs = db.prepare('SELECT * FROM questions WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+  res.json(qs.map(q => ({ ...q, options: JSON.parse(q.options), answers: tryParseAnswers(q.answer) })));
+});
+
+app.post('/api/questions', auth, (req, res) => {
+  const { text, options, answers, difficulty } = req.body;
+  if (!text || !options || !answers) return res.status(400).json({ error: 'text, options, answers required' });
+  if (!Array.isArray(options) || options.length !== 4) return res.status(400).json({ error: '4 options required' });
+  if (!Array.isArray(answers) || answers.length === 0) return res.status(400).json({ error: 'at least one answer required' });
+  if (!answers.every(a => options.includes(a))) return res.status(400).json({ error: 'all answers must be among the options' });
+  const result = db.prepare(
+    'INSERT INTO questions (user_id, text, options, answer, difficulty) VALUES (?,?,?,?,?)'
+  ).run(req.user.id, text.trim(), JSON.stringify(options), JSON.stringify(answers), difficulty || 'easy');
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/questions/:id', auth, (req, res) => {
+  const { text, options, answers, difficulty } = req.body;
+  const q = db.prepare('SELECT id FROM questions WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  if (!Array.isArray(answers) || answers.length === 0) return res.status(400).json({ error: 'at least one answer required' });
+  if (!answers.every(a => options.includes(a))) return res.status(400).json({ error: 'all answers must be among the options' });
+  db.prepare('UPDATE questions SET text=?, options=?, answer=?, difficulty=? WHERE id=?')
+    .run(text.trim(), JSON.stringify(options), JSON.stringify(answers), difficulty || 'easy', req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/questions/:id', auth, (req, res) => {
+  db.prepare('DELETE FROM questions WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  res.json({ ok: true });
+});
+
+app.patch('/api/questions/:id/visibility', auth, (req, res) => {
+  const q = db.prepare('SELECT id, is_public FROM questions WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  const newVal = q.is_public ? 0 : 1;
+  db.prepare('UPDATE questions SET is_public=? WHERE id=?').run(newVal, req.params.id);
+  res.json({ is_public: newVal });
+});
+
+// ── Tension Community ─────────────────────────────────────────────────────────
+app.get('/api/community/levels', auth, (req, res) => {
+  const levels = db.prepare(`
+    SELECT l.id, l.name, l.created_at, u.username
+    FROM levels l JOIN users u ON l.user_id = u.id
+    WHERE l.is_public = 1
+    ORDER BY l.updated_at DESC
+  `).all();
+  res.json(levels);
+});
+
+app.get('/api/community/questions', auth, (req, res) => {
+  const qs = db.prepare(`
+    SELECT q.id, q.text, q.options, q.answer, q.difficulty, u.username
+    FROM questions q JOIN users u ON q.user_id = u.id
+    WHERE q.is_public = 1
+    ORDER BY q.created_at DESC
+  `).all();
+  res.json(qs.map(q => ({ ...q, options: JSON.parse(q.options), answers: tryParseAnswers(q.answer) })));
+});
+
+app.post('/api/community/questions/:id/import', auth, (req, res) => {
+  const q = db.prepare('SELECT * FROM questions WHERE id = ? AND is_public = 1').get(req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  const result = db.prepare(
+    'INSERT INTO questions (user_id, text, options, answer, difficulty) VALUES (?,?,?,?,?)'
+  ).run(req.user.id, q.text, q.options, q.answer, q.difficulty);
+  res.json({ id: result.lastInsertRowid });
+});
+
+// ── Tension Room / Host ───────────────────────────────────────────────────────
+app.post('/api/host', auth, (req, res) => {
+  const { levelId, community } = req.body;
+  const row = community
+    ? db.prepare('SELECT * FROM levels WHERE id = ? AND is_public = 1').get(levelId)
+    : db.prepare('SELECT * FROM levels WHERE id = ? AND user_id = ?').get(levelId, req.user.id);
+  if (!row) return res.status(404).json({ error: 'Level not found' });
+  const level = JSON.parse(row.data);
+  level.name = row.name;
+  level.type = 'teacher';
+  const code = Math.random().toString(36).slice(2, 7).toUpperCase();
+  rooms[code] = new GameRoom(code, io, level);
+  res.json({ code });
+});
+
+app.post('/api/room', (req, res) => {
+  const { level, roomCode } = req.body;
+  const code = (roomCode || Math.random().toString(36).slice(2, 8)).toUpperCase();
+  if (!rooms[code]) {
+    rooms[code] = new GameRoom(code, io, level || sampleLevel);
+  }
+  res.json({ code });
+});
+
+// ── Tension Portal Pages ──────────────────────────────────────────────────────
+app.get('/portal', (req, res) => res.sendFile(join(__dirname, 'public/tension/auth.html')));
+app.get('/dashboard', (req, res) => res.sendFile(join(__dirname, 'public/tension/dashboard.html')));
+app.get('/builder', (req, res) => res.sendFile(join(__dirname, 'public/tension/builder.html')));
+
+// ── Serve three.js locally (replaces CDN dependency) ─────────────────────────
+app.use('/three/', express.static(join(__dirname, 'node_modules/three')));
+
+// ── Static Files ──────────────────────────────────────────────────────────────
 app.use(express.static(join(__dirname, "public")));
+app.use("/scramjet/", express.static(join(__dirname, "node_modules/@mercuryworkshop/scramjet/dist")));
+app.use("/bare-mux/", express.static(join(__dirname, "node_modules/@mercuryworkshop/bare-mux/dist")));
+app.use("/epoxy/", express.static(join(__dirname, "node_modules/@mercuryworkshop/epoxy-transport/dist")));
 
-// Serve scramjet + bare-mux + epoxy dist files
-app.use(
-  "/scramjet/",
-  express.static(join(__dirname, "node_modules/@mercuryworkshop/scramjet/dist"))
-);
-app.use(
-  "/bare-mux/",
-  express.static(join(__dirname, "node_modules/@mercuryworkshop/bare-mux/dist"))
-);
-app.use(
-  "/epoxy/",
-  express.static(join(__dirname, "node_modules/@mercuryworkshop/epoxy-transport/dist"))
-);
-
-// Games API: merge games-list.json with local game folders
+// ── Games API ─────────────────────────────────────────────────────────────────
 app.get("/api/games", (req, res) => {
   import("fs").then(({ readdirSync, existsSync, readFileSync }) => {
     let games = [];
-
-    // Load central games list
     const listPath = join(__dirname, "public", "games-list.json");
     if (existsSync(listPath)) {
       try { games = JSON.parse(readFileSync(listPath, "utf-8")); } catch {}
     }
-
-    // Merge locally-hosted game folders
     const gamesDir = join(__dirname, "public", "games");
     if (existsSync(gamesDir)) {
       const localIds = new Set(games.map((g) => g.id));
@@ -142,11 +327,11 @@ app.get("/api/games", (req, res) => {
           });
         });
     }
-
     res.json(games);
   });
 });
 
+// ── Fetch Proxy ───────────────────────────────────────────────────────────────
 function fetchProxy(target, req, res, depth = 0) {
   if (depth > 3) return res.status(502).end();
   let parsed;
@@ -173,14 +358,93 @@ app.get("/api/fetch", (req, res) => {
   fetchProxy(target, req, res);
 });
 
+// ── HTTP Server + Socket.IO ───────────────────────────────────────────────────
 const server = createServer(app);
+const io = new SocketServer(server, {
+  transports: ['polling', 'websocket'],
+  allowUpgrades: true,
+});
 
-// Wisp WebSocket proxy
+// ── Tension Socket.IO Handlers ────────────────────────────────────────────────
+io.on('connection', (socket) => {
+  socket.on('join_room', ({ roomCode, username, color, hat }) => {
+    if (!roomCode || typeof roomCode !== 'string') return;
+    const code = roomCode.toUpperCase().slice(0, 10);
+    const safeName  = String(username || 'Player').trim().slice(0, 20) || 'Player';
+    const safeColor = (typeof color === 'number' && isFinite(color)) ? (color & 0xffffff) : 0xe94560;
+    const safeHat   = ['none','cap','tophat','crown','cowboy','party','beanie'].includes(hat) ? hat : 'none';
+    if (!rooms[code]) {
+      rooms[code] = new GameRoom(code, io, sampleLevel);
+    }
+    const room = rooms[code];
+    socket.roomCode = code;
+    socket.join(code);
+    room.addPlayer(socket, safeName, safeColor, safeHat);
+  });
+
+  let lastUpdateMs = 0;
+  socket.on('player_update', (data) => {
+    const now = Date.now();
+    if (now - lastUpdateMs < 40) return;
+    lastUpdateMs = now;
+    const room = rooms[socket.roomCode];
+    if (room) room.updatePlayer(socket.id, data);
+  });
+
+  socket.on('checkpoint', (checkpointId) => {
+    const room = rooms[socket.roomCode];
+    if (room) room.handleCheckpoint(socket.id, checkpointId);
+  });
+
+  socket.on('question_zone', (questionId) => {
+    const room = rooms[socket.roomCode];
+    if (room) room.handleQuestion(socket.id, questionId);
+  });
+
+  socket.on('answer', ({ questionId, answer }) => {
+    const room = rooms[socket.roomCode];
+    if (room) room.handleAnswer(socket.id, questionId, answer);
+  });
+
+  socket.on('finish', () => {
+    const room = rooms[socket.roomCode];
+    if (room) room.handleFinish(socket.id);
+  });
+
+  socket.on('rebirth', () => {
+    const room = rooms[socket.roomCode];
+    if (room) room.handleRebirth(socket.id);
+  });
+
+  socket.on('flashlight', ({ on }) => {
+    const room = rooms[socket.roomCode];
+    if (!room) return;
+    socket.to(socket.roomCode).emit('flashlight', { id: socket.id, on: !!on });
+  });
+
+  socket.on('chat', (msg) => {
+    const room = rooms[socket.roomCode];
+    if (!room) return;
+    const player = room.players[socket.id];
+    if (!player) return;
+    const text = String(msg).trim().slice(0, 120);
+    if (!text) return;
+    io.to(socket.roomCode).emit('chat', { username: player.username, text });
+  });
+
+  socket.on('disconnect', () => {
+    const room = rooms[socket.roomCode];
+    if (room) {
+      room.removePlayer(socket.id);
+      if (room.isEmpty()) delete rooms[socket.roomCode];
+    }
+  });
+});
+
+// ── Wisp WebSocket Proxy ──────────────────────────────────────────────────────
 server.on("upgrade", (req, socket, head) => {
   if (req.url.startsWith("/wisp/")) {
     wispServer.routeRequest(req, socket, head);
-  } else {
-    socket.end();
   }
 });
 

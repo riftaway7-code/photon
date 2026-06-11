@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TENSION</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .tn-peek {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      background: rgba(20,10,40,0.85);
+      border: 1px solid rgba(120,80,255,0.4);
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      width: 52px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+      backdrop-filter: blur(10px);
+    }
+    .tn-peek:hover {
+      background: rgba(124,58,237,0.5);
+      box-shadow: 0 2px 16px rgba(124,58,237,0.6);
+      transform: translateX(-50%) scaleY(1.15);
+    }
+    .tn-peek.open { opacity: 0; pointer-events: none; }
+    .tn-peek svg { width: 18px; height: 18px; fill: #c4b5fd; }
+
+    .tn-nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 9998;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      background: rgba(10,10,15,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(120,80,255,0.2);
+      transform: translateY(-100%);
+      transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+    }
+    .tn-nav.open { transform: translateY(0); }
+
+    .tn-nav-brand {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700; font-size: 1.15rem;
+      color: #e8e8f0; text-decoration: none;
+    }
+    .tn-nav-brand span:first-child { color: #a78bfa; font-size: 1.4rem; }
+
+    .tn-nav-links { display: flex; gap: 0.4rem; }
+    .tn-nav-links a {
+      padding: 0.35rem 0.9rem;
+      border-radius: 20px;
+      color: #8888aa;
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.2s, background 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .tn-nav-links a:hover { color: #e8e8f0; background: rgba(255,255,255,0.07); }
+    .tn-nav-links a.tn-active { color: #a78bfa; background: rgba(124,58,237,0.15); }
+    .tn-nav-links a.tn-new { color: #22c55e; background: rgba(34,197,94,0.1); }
+  </style>
+</head>
+<body>
+
+  <!-- Photon nav peek -->
+  <div class="tn-peek" id="tnPeek">
+    <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+  </div>
+  <nav class="tn-nav" id="tnNav">
+    <a href="/index.html" class="tn-nav-brand">
+      <span>✦</span><span>photon</span>
+    </a>
+    <div class="tn-nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/games.html">Games</a>
+      <a href="/movies.html">Movies</a>
+      <a href="/browser.html">Browser</a>
+      <a href="/chat.html">Chat</a>
+      <a href="/settings.html">Settings</a>
+      <a href="/tension/" class="tn-active tn-new">Tension</a>
+    </div>
+  </nav>
+  <script>
+    const tnPeek = document.getElementById('tnPeek');
+    const tnNav  = document.getElementById('tnNav');
+    let showTimer = null, hideTimer = null;
+
+    function openNav() {
+      clearTimeout(showTimer); clearTimeout(hideTimer);
+      tnPeek.classList.add('open');
+      tnNav.classList.add('open');
+    }
+    function closeNav() {
+      tnPeek.classList.remove('open');
+      tnNav.classList.remove('open');
+    }
+
+    tnPeek.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimer);
+      showTimer = setTimeout(openNav, 300);
+    });
+    tnPeek.addEventListener('mouseleave', () => clearTimeout(showTimer));
+    tnNav.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    tnNav.addEventListener('mouseleave', () => {
+      hideTimer = setTimeout(closeNav, 300);
+    });
+  </script>
+
+  <!-- Lobby -->
+  <div id="lobby">
+    <div class="lobby-box">
+      <h1>TENSION</h1>
+      <p>Multiplayer obby — answer right or fall</p>
+      <div class="customize-row">
+        <canvas id="preview-canvas"></canvas>
+        <div class="customize-right">
+          <div class="customize-label">COLOR</div>
+          <div id="color-swatches"></div>
+        </div>
+      </div>
+      <div class="customize-label">HAT</div>
+      <div id="hat-picker"></div>
+      <input id="username-input" type="text" placeholder="Username" maxlength="16" />
+      <input id="room-input" type="text" placeholder="Room code (or leave blank)" maxlength="8" />
+      <button id="join-btn">JOIN GAME</button>
+      <p style="margin-top:18px;font-size:0.78rem;color:#444">
+        Teacher? <a href="/portal" style="color:#e94560">Sign in to create levels →</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Game canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" style="display:none">
+    <div id="level-banner"><span id="level-name"></span></div>
+
+    <div id="stats">
+      <div class="stat-box">CHECKPOINT <span id="checkpoint-val">0 / 0</span></div>
+      <div class="stat-box" id="timer-box">TIME <span id="timer-val">0:00</span></div>
+    </div>
+
+    <div id="scoreboard">
+      <h3>LEADERBOARD</h3>
+      <div id="score-list"></div>
+    </div>
+
+    <div id="notification"></div>
+
+    <div id="controls-hint">WASD move · SHIFT sprint · SPACE/SPACE×2 jump · T chat · Click to lock mouse</div>
+
+  <!-- Mobile controls -->
+  <div id="mobile-ui" style="display:none">
+    <div id="joystick-zone">
+      <div id="joystick-base">
+        <div id="joystick-knob"></div>
+      </div>
+    </div>
+    <div id="look-zone"></div>
+    <button id="jump-btn">JUMP</button>
+    <button id="sprint-btn">SPRINT</button>
+  </div>
+  </div>
+
+  <!-- Mod menu -->
+  <div id="mod-menu" style="display:none">
+    <div id="mod-card">
+      <div id="mod-title">★ MOD MENU ★</div>
+      <div class="mod-row">
+        <span>Fly Mode</span>
+        <button class="mod-btn" id="mod-fly">OFF</button>
+      </div>
+      <div class="mod-row">
+        <span>Speed Boost</span>
+        <button class="mod-btn" id="mod-speed">OFF</button>
+      </div>
+      <div class="mod-row">
+        <span>Infinite Jumps</span>
+        <button class="mod-btn" id="mod-jumps">OFF</button>
+      </div>
+      <div class="mod-row">
+        <span>Ghost Mode</span>
+        <button class="mod-btn" id="mod-ghost">OFF</button>
+      </div>
+      <div id="mod-hint">SPACE=up  SHIFT=down  (fly) · Close: Esc</div>
+    </div>
+  </div>
+
+  <!-- Chat (outside hud so it always shows) -->
+  <div id="chat-panel" style="display:none">
+    <div id="chat-messages"></div>
+    <div id="chat-input-row" style="display:none">
+      <input id="chat-input" type="text" placeholder="Say something..." maxlength="120" autocomplete="off" />
+    </div>
+  </div>
+
+  <!-- Rebirth overlay -->
+  <div id="rebirth-overlay" style="display:none">
+    <div id="rebirth-card">
+      <div id="rebirth-badge">LEVEL COMPLETE</div>
+      <h2 id="rebirth-title">You finished Easy!</h2>
+      <p id="rebirth-sub">Ready for the next challenge?</p>
+      <div id="rebirth-difficulty-badge"></div>
+      <button id="rebirth-btn">REBIRTH →</button>
+      <button id="rebirth-skip">Stay here</button>
+    </div>
+  </div>
+
+  <!-- Rebirth maxed overlay -->
+  <div id="rebirth-maxed-overlay" style="display:none">
+    <div id="rebirth-card">
+      <div id="rebirth-badge" style="background:#ff0033">ALL REBIRTHS COMPLETE</div>
+      <h2>You conquered INSANE!</h2>
+      <p style="color:#ffd700;margin:12px 0">You are a legend.</p>
+    </div>
+  </div>
+
+  <!-- Question overlay -->
+  <div id="question-overlay" style="display:none">
+    <div id="question-card">
+      <div id="question-badge">QUESTION ZONE</div>
+      <h3 id="question-text"></h3>
+      <div class="options-grid" id="options-container"></div>
+      <div id="answer-feedback"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/three/build/three.module.js",
+        "three/addons/": "/three/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

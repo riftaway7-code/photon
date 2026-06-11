@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TENSION — Dashboard</title>
+  <link rel="icon" type="image/png" href="/tension/favicon.png" />
+  <link rel="stylesheet" href="/tension/css/portal.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-logo">TENSION</span>
+  <div class="nav-links">
+    <a href="/">Play</a>
+    <a href="/builder">New Level</a>
+    <span id="nav-user" style="color:#fff;font-weight:700"></span>
+    <button class="btn-logout" id="logout-btn">Logout</button>
+  </div>
+</nav>
+
+<div class="dash-wrap">
+  <div class="dash-header">
+    <h2>My Dashboard</h2>
+    <a href="/builder" class="btn btn-primary">+ New Level</a>
+  </div>
+
+  <!-- Tabs -->
+  <div class="dash-tabs">
+    <div class="dash-tab active" data-tab="mine">My Stuff</div>
+    <div class="dash-tab" data-tab="community">Community</div>
+  </div>
+
+  <!-- My Stuff tab -->
+  <div id="tab-mine">
+    <div class="section-title">My Levels</div>
+    <div class="level-grid" id="level-grid">
+      <div class="empty">Loading...</div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="section-title" style="margin:0">Question Bank</div>
+      <button class="btn btn-secondary btn-sm" id="add-q-btn">+ Add Question</button>
+    </div>
+    <div class="q-list" id="q-list">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Community tab -->
+  <div id="tab-community" style="display:none">
+    <div class="section-title">Community Maps</div>
+    <div class="level-grid" id="community-level-grid">
+      <div class="empty">Loading...</div>
+    </div>
+
+    <div class="section-title">Community Questions</div>
+    <div class="q-list" id="community-q-list">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Room code toast -->
+<div id="code-toast" style="display:none;position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#16213e;border:2px solid #e94560;border-radius:12px;padding:18px 28px;text-align:center;z-index:50">
+  <div style="font-size:0.78rem;color:#aaa;margin-bottom:6px;letter-spacing:2px">ROOM CODE</div>
+  <div class="code-badge" id="code-val">-----</div>
+  <div style="font-size:0.75rem;color:#555;margin-top:8px">Share this with your players · <span id="copy-code" style="color:#e94560;cursor:pointer">Copy</span></div>
+  <button class="btn btn-sm btn-secondary" style="margin-top:12px" onclick="document.getElementById('code-toast').style.display='none'">Close</button>
+</div>
+
+<!-- Add/Edit Question modal -->
+<div class="modal-bg" id="q-modal">
+  <div class="modal">
+    <h3 id="q-modal-title">Add Question</h3>
+    <div class="form-row"><label>Question text</label><textarea id="q-text" rows="2" style="width:100%;resize:none"></textarea></div>
+    <div class="form-row">
+      <label>Options (enter all 4)</label>
+      <div class="options-grid">
+        <input id="q-opt0" placeholder="Option A" />
+        <input id="q-opt1" placeholder="Option B" />
+        <input id="q-opt2" placeholder="Option C" />
+        <input id="q-opt3" placeholder="Option D" />
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Correct answers (check all that apply)</label>
+      <div id="q-answer-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px"></div>
+    </div>
+    <div class="form-row">
+      <label>Difficulty</label>
+      <select id="q-diff" style="width:100%">
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+        <option value="expert">Expert</option>
+        <option value="extreme">Extreme</option>
+        <option value="insane">Insane</option>
+      </select>
+    </div>
+    <div class="error-msg" id="q-error"></div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn btn-primary" id="q-save-btn">Save</button>
+      <button class="btn btn-secondary" onclick="closeQModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('tension_token');
+if (!token) location.href = '/portal';
+document.getElementById('nav-user').textContent = localStorage.getItem('tension_user') || '';
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('tension_token');
+  localStorage.removeItem('tension_user');
+  location.href = '/portal';
+});
+
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r.json();
+}
+
+const DIFF_LABELS = { easy:'Easy', medium:'Medium', hard:'Hard', expert:'Expert', extreme:'Extreme', insane:'Insane' };
+
+// ── Levels ──────────────────────────────────────────────────────────────────
+
+async function loadLevels() {
+  const levels = await api('GET', '/api/levels');
+  const grid = document.getElementById('level-grid');
+  if (!levels.length) { grid.innerHTML = '<div class="empty">No levels yet. <a href="/builder">Create one →</a></div>'; return; }
+  grid.innerHTML = levels.map(l => `
+    <div class="level-card" id="lcard-${l.id}">
+      <h3>${escHtml(l.name)}</h3>
+      <div class="meta">Created ${new Date(l.created_at).toLocaleDateString()} · <span style="color:${l.is_public?'#2ecc71':'#555'}">${l.is_public?'Public':'Private'}</span></div>
+      <div class="actions">
+        <button class="btn btn-gold btn-sm" onclick="hostLevel(${l.id})">▶ Host</button>
+        <a href="/builder?id=${l.id}" class="btn btn-secondary btn-sm">Edit</a>
+        <button class="btn btn-secondary btn-sm" onclick="toggleLevelVisibility(${l.id}, this)">${l.is_public?'Make Private':'Make Public'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteLevel(${l.id}, this)">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function hostLevel(id) {
+  const data = await api('POST', '/api/host', { levelId: id });
+  if (data.error) { alert(data.error); return; }
+  document.getElementById('code-val').textContent = data.code;
+  document.getElementById('code-toast').style.display = 'block';
+  document.getElementById('copy-code').onclick = () => {
+    navigator.clipboard.writeText(data.code);
+    document.getElementById('copy-code').textContent = 'Copied!';
+  };
+}
+
+async function deleteLevel(id, btn) {
+  if (!confirm('Delete this level?')) return;
+  await api('DELETE', '/api/levels/' + id);
+  loadLevels();
+}
+
+// ── Questions ────────────────────────────────────────────────────────────────
+
+let editingQId = null;
+
+async function loadQuestions() {
+  const qs = await api('GET', '/api/questions');
+  const list = document.getElementById('q-list');
+  if (!qs.length) { list.innerHTML = '<div class="empty">No questions yet. Add some to use in your levels.</div>'; return; }
+  list.innerHTML = qs.map(q => {
+    const ans = (q.answers || []).map(a => escHtml(a)).join(', ');
+    return `
+    <div class="q-row" id="qrow-${q.id}">
+      <span class="diff-badge diff-${q.difficulty}">${DIFF_LABELS[q.difficulty]}</span>
+      <div style="flex:1;min-width:0">
+        <div class="q-text">${escHtml(q.text)}</div>
+        <div style="font-size:0.72rem;color:#2ecc71;margin-top:2px">✓ ${ans}</div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editQ(${q.id})">Edit</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleQVisibility(${q.id}, this)" style="color:${q.is_public?'#2ecc71':'#aaa'}">${q.is_public?'Public':'Share'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteQ(${q.id}, this)">Del</button>
+      </div>
+    </div>`;
+  }).join('');
+  window._questions = qs;
+}
+
+async function deleteQ(id, btn) {
+  if (!confirm('Delete this question?')) return;
+  await api('DELETE', '/api/questions/' + id);
+  loadQuestions();
+}
+
+function rebuildAnswerChecks(options, selected) {
+  const container = document.getElementById('q-answer-checks');
+  container.innerHTML = options.map((o, i) => o ? `
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 8px;border-radius:6px;border:1px solid #1a5276;background:#0f3460;font-size:0.82rem">
+      <input type="checkbox" data-idx="${i}" ${selected && selected.includes(o) ? 'checked' : ''} style="width:auto;padding:0;border:none;background:none;accent-color:#e94560">
+      ${escHtml(o)}
+    </label>` : '').join('');
+}
+
+function openQModal(q) {
+  editingQId = q ? q.id : null;
+  document.getElementById('q-modal-title').textContent = q ? 'Edit Question' : 'Add Question';
+  document.getElementById('q-text').value = q?.text || '';
+  const opts = q?.options || ['','','',''];
+  opts.forEach((o,i) => document.getElementById('q-opt'+i).value = o);
+  rebuildAnswerChecks(opts, q?.answers || []);
+  document.getElementById('q-diff').value = q?.difficulty || 'easy';
+  document.getElementById('q-error').textContent = '';
+  document.getElementById('q-modal').classList.add('open');
+}
+
+// Rebuild answer checkboxes whenever an option input changes
+[0,1,2,3].forEach(i => {
+  document.getElementById('q-opt'+i).addEventListener('input', () => {
+    const opts = [0,1,2,3].map(j => document.getElementById('q-opt'+j).value.trim());
+    const checked = [...document.querySelectorAll('#q-answer-checks input:checked')].map(cb => {
+      const idx = +cb.dataset.idx;
+      return opts[idx];
+    }).filter(Boolean);
+    rebuildAnswerChecks(opts, checked);
+  });
+});
+
+function closeQModal() { document.getElementById('q-modal').classList.remove('open'); }
+
+function editQ(id) {
+  const q = window._questions?.find(q => q.id === id);
+  if (q) openQModal(q);
+}
+
+document.getElementById('add-q-btn').addEventListener('click', () => openQModal(null));
+
+document.getElementById('q-save-btn').addEventListener('click', async () => {
+  const err = document.getElementById('q-error');
+  err.textContent = '';
+  const text = document.getElementById('q-text').value.trim();
+  const options = [0,1,2,3].map(i => document.getElementById('q-opt'+i).value.trim());
+  const answers = [...document.querySelectorAll('#q-answer-checks input:checked')].map(cb => options[+cb.dataset.idx]).filter(Boolean);
+  const difficulty = document.getElementById('q-diff').value;
+  if (!text) { err.textContent = 'Question text required'; return; }
+  if (options.some(o => !o)) { err.textContent = 'All 4 options required'; return; }
+  if (!answers.length) { err.textContent = 'Select at least one correct answer'; return; }
+  const body = { text, options, answers, difficulty };
+  const result = editingQId
+    ? await api('PUT', '/api/questions/' + editingQId, body)
+    : await api('POST', '/api/questions', body);
+  if (result.error) { err.textContent = result.error; return; }
+  closeQModal();
+  loadQuestions();
+});
+
+document.getElementById('q-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('q-modal')) closeQModal();
+});
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Visibility toggles ───────────────────────────────────────────────────────
+
+async function toggleLevelVisibility(id, btn) {
+  const data = await api('PATCH', `/api/levels/${id}/visibility`);
+  if (data.error) { alert(data.error); return; }
+  btn.textContent = data.is_public ? 'Make Private' : 'Make Public';
+  const meta = document.querySelector(`#lcard-${id} .meta`);
+  if (meta) meta.innerHTML = meta.innerHTML.replace(/(Public|Private)/, data.is_public ? '<span style="color:#2ecc71">Public</span>' : '<span style="color:#555">Private</span>');
+}
+
+async function toggleQVisibility(id, btn) {
+  const data = await api('PATCH', `/api/questions/${id}/visibility`);
+  if (data.error) { alert(data.error); return; }
+  btn.textContent = data.is_public ? 'Public' : 'Share';
+  btn.style.color = data.is_public ? '#2ecc71' : '#aaa';
+}
+
+// ── Community ────────────────────────────────────────────────────────────────
+
+async function loadCommunity() {
+  const [levels, qs] = await Promise.all([
+    api('GET', '/api/community/levels'),
+    api('GET', '/api/community/questions'),
+  ]);
+
+  const grid = document.getElementById('community-level-grid');
+  if (!levels.length) {
+    grid.innerHTML = '<div class="empty">No public maps yet.</div>';
+  } else {
+    grid.innerHTML = levels.map(l => `
+      <div class="level-card">
+        <h3>${escHtml(l.name)}</h3>
+        <div class="meta">by ${escHtml(l.username)} · ${new Date(l.created_at).toLocaleDateString()}</div>
+        <div class="actions">
+          <button class="btn btn-gold btn-sm" onclick="hostCommunityLevel(${l.id})">▶ Host</button>
+        </div>
+      </div>`).join('');
+  }
+
+  const list = document.getElementById('community-q-list');
+  if (!qs.length) {
+    list.innerHTML = '<div class="empty">No public questions yet.</div>';
+  } else {
+    list.innerHTML = qs.map(q => {
+      const ans = (q.answers || []).map(a => escHtml(a)).join(', ');
+      return `
+      <div class="q-row">
+        <span class="diff-badge diff-${q.difficulty}">${DIFF_LABELS[q.difficulty]}</span>
+        <div style="flex:1;min-width:0">
+          <div class="q-text">${escHtml(q.text)}</div>
+          <div style="font-size:0.72rem;color:#2ecc71;margin-top:2px">✓ ${ans}</div>
+          <div style="font-size:0.72rem;color:#555;margin-top:2px">by ${escHtml(q.username)}</div>
+        </div>
+        <div class="q-actions">
+          <button class="btn btn-secondary btn-sm" onclick="importQuestion(${q.id}, this)">+ Import</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function hostCommunityLevel(id) {
+  const data = await api('POST', '/api/host', { levelId: id, community: true });
+  if (data.error) { alert(data.error); return; }
+  document.getElementById('code-val').textContent = data.code;
+  document.getElementById('code-toast').style.display = 'block';
+  document.getElementById('copy-code').onclick = () => {
+    navigator.clipboard.writeText(data.code);
+    document.getElementById('copy-code').textContent = 'Copied!';
+  };
+}
+
+async function importQuestion(id, btn) {
+  const data = await api('POST', `/api/community/questions/${id}/import`);
+  if (data.error) { alert(data.error); return; }
+  btn.textContent = 'Imported!';
+  btn.disabled = true;
+  loadQuestions();
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+
+let communityLoaded = false;
+document.querySelectorAll('.dash-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const name = tab.dataset.tab;
+    document.getElementById('tab-mine').style.display = name === 'mine' ? '' : 'none';
+    document.getElementById('tab-community').style.display = name === 'community' ? '' : 'none';
+    if (name === 'community' && !communityLoaded) {
+      communityLoaded = true;
+      loadCommunity();
+    }
+  });
+});
+
+loadLevels();
+loadQuestions();
+</script>
+</body>
+</html>

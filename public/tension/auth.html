@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TENSION — Sign In</title>
+  <link rel="icon" type="image/png" href="/tension/favicon.png" />
+  <link rel="stylesheet" href="/tension/css/portal.css" />
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-box">
+    <h1>TENSION</h1>
+    <p>Create levels, host games, track scores</p>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" data-tab="login">LOGIN</div>
+      <div class="auth-tab" data-tab="signup">SIGN UP</div>
+    </div>
+
+    <div class="auth-form active" id="login-form">
+      <div class="form-row"><label>Email</label><input id="l-email" type="email" placeholder="you@email.com" /></div>
+      <div class="form-row"><label>Password</label><input id="l-pass" type="password" placeholder="••••••••" /></div>
+      <div class="error-msg" id="l-error"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="l-btn">LOGIN</button>
+    </div>
+
+    <div class="auth-form" id="signup-form">
+      <div class="form-row"><label>Username</label><input id="s-name" type="text" placeholder="CoolTeacher" maxlength="20" /></div>
+      <div class="form-row"><label>Email</label><input id="s-email" type="email" placeholder="you@email.com" /></div>
+      <div class="form-row"><label>Password (min 6 chars)</label><input id="s-pass" type="password" placeholder="••••••••" /></div>
+      <div class="error-msg" id="s-error"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="s-btn">CREATE ACCOUNT</button>
+    </div>
+
+    <p style="text-align:center;margin-top:20px;font-size:0.8rem;color:#555">
+      Just want to play? <a href="/">← Back to game</a>
+    </p>
+  </div>
+</div>
+
+<script>
+  if (localStorage.getItem('tension_token')) location.href = '/dashboard';
+
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.auth-tab, .auth-form').forEach(el => el.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab + '-form').classList.add('active');
+    });
+  });
+
+  async function post(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
+
+  document.getElementById('l-btn').addEventListener('click', async () => {
+    const err = document.getElementById('l-error');
+    err.textContent = '';
+    const data = await post('/auth/login', {
+      email: document.getElementById('l-email').value,
+      password: document.getElementById('l-pass').value,
+    });
+    if (data.error) { err.textContent = data.error; return; }
+    localStorage.setItem('tension_token', data.token);
+    localStorage.setItem('tension_user', data.username);
+    location.href = '/dashboard';
+  });
+
+  document.getElementById('s-btn').addEventListener('click', async () => {
+    const err = document.getElementById('s-error');
+    err.textContent = '';
+    const data = await post('/auth/signup', {
+      username: document.getElementById('s-name').value,
+      email: document.getElementById('s-email').value,
+      password: document.getElementById('s-pass').value,
+    });
+    if (data.error) { err.textContent = data.error; return; }
+    localStorage.setItem('tension_token', data.token);
+    localStorage.setItem('tension_user', data.username);
+    location.href = '/dashboard';
+  });
+
+  ['l-email','l-pass'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('l-btn').click(); });
+  });
+  ['s-name','s-email','s-pass'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('s-btn').click(); });
+  });
+</script>
+</body>
+</html>

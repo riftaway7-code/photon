@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TENSION — Level Builder</title>
+  <link rel="icon" type="image/png" href="/tension/favicon.png" />
+  <link rel="stylesheet" href="/tension/css/portal.css" />
+  <style>
+    body { overflow: hidden; }
+    .builder-wrap { display: flex; height: calc(100vh - 54px); }
+
+    /* Sidebar */
+    .sidebar {
+      width: 220px; min-width: 220px;
+      background: #12192e;
+      border-right: 1px solid #0f3460;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .sidebar-section { padding: 14px; border-bottom: 1px solid #0f3460; }
+    .sidebar-section h4 { font-size: 0.72rem; letter-spacing: 2px; color: #e94560; text-transform: uppercase; margin-bottom: 10px; }
+
+    .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .tool-btn {
+      padding: 8px 4px; text-align: center;
+      border-radius: 6px; cursor: pointer;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
+      border: 1px solid #1a3050; background: #0f1e3a;
+      transition: all 0.12s; color: #aaa;
+    }
+    .tool-btn:hover { border-color: #e94560; color: #fff; }
+    .tool-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+
+    .prop-row { margin-bottom: 10px; }
+    .prop-row label { font-size: 0.72rem; color: #777; margin-bottom: 3px; }
+    .prop-row input, .prop-row select { width: 100%; padding: 6px 10px; font-size: 0.82rem; }
+    .prop-row input[type=color] { height: 34px; padding: 2px 4px; cursor: pointer; }
+
+    /* Canvas area */
+    .canvas-wrap { flex: 1; display: flex; flex-direction: column; background: #0a0f1e; }
+    .canvas-topbar {
+      height: 44px; background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      display: flex; align-items: center; padding: 0 16px; gap: 12px;
+    }
+    .canvas-topbar input[type=text] { background: #0f3460; border: 1px solid #1a5276; border-radius: 6px; color: #fff; padding: 6px 12px; font-size: 0.9rem; width: 220px; }
+    .canvas-topbar .hint { font-size: 0.72rem; color: #444; margin-left: auto; }
+    canvas { cursor: crosshair; display: block; }
+    .canvas-scroll { flex: 1; overflow: hidden; position: relative; }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-logo">TENSION</span>
+  <div class="nav-links">
+    <a href="/dashboard">← Dashboard</a>
+    <span id="nav-user" style="color:#fff;font-weight:700"></span>
+  </div>
+</nav>
+
+<div class="builder-wrap">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- Tools -->
+    <div class="sidebar-section">
+      <h4>Tools</h4>
+      <div class="tool-grid">
+        <div class="tool-btn active" data-tool="platform">PLATFORM</div>
+        <div class="tool-btn" data-tool="moving">MOVING</div>
+        <div class="tool-btn" data-tool="checkpoint">CHECK PT</div>
+        <div class="tool-btn" data-tool="question">QUESTION</div>
+        <div class="tool-btn" data-tool="finish">FINISH</div>
+        <div class="tool-btn" data-tool="delete">DELETE</div>
+      </div>
+    </div>
+
+    <!-- Properties -->
+    <div class="sidebar-section">
+      <h4>Properties</h4>
+      <div class="prop-row"><label>Height (Y)</label><input type="number" id="p-y" value="0" step="0.5" /></div>
+      <div class="prop-row"><label>Thickness (H)</label><input type="number" id="p-h" value="1" step="0.5" min="0.5" /></div>
+      <div class="prop-row" id="p-color-row"><label>Color</label><input type="color" id="p-color" value="#6ab4f5" /></div>
+      <div id="p-moving-props" style="display:none">
+        <div class="prop-row"><label>Move Axis</label>
+          <select id="p-axis"><option value="x">X (left/right)</option><option value="z">Z (forward/back)</option><option value="y">Y (up/down)</option></select>
+        </div>
+        <div class="prop-row"><label>Range</label><input type="number" id="p-range" value="6" min="1" /></div>
+        <div class="prop-row"><label>Speed</label><input type="number" id="p-speed" value="2" step="0.5" min="0.5" /></div>
+      </div>
+      <div id="p-question-props" style="display:none">
+        <div class="prop-row"><label>Question</label>
+          <select id="p-question" style="width:100%"><option value="">— select —</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selected block info -->
+    <div class="sidebar-section" id="sel-section" style="display:none">
+      <h4>Selected Block</h4>
+      <div id="sel-info" style="font-size:0.78rem;color:#aaa;line-height:1.7"></div>
+      <button class="btn btn-danger btn-sm" style="margin-top:8px;width:100%" id="sel-delete-btn">Delete Block</button>
+    </div>
+
+    <!-- Scroll hint -->
+    <div class="sidebar-section">
+      <h4>Navigation</h4>
+      <div style="font-size:0.72rem;color:#555;line-height:1.7">
+        Scroll wheel: zoom<br>
+        Right-click drag: pan<br>
+        Click+drag: place block<br>
+        Click block: select
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas area -->
+  <div class="canvas-wrap">
+    <div class="canvas-topbar">
+      <input type="text" id="level-name" placeholder="Level name..." value="My Level" />
+      <button class="btn btn-primary btn-sm" id="save-btn">Save</button>
+      <button class="btn btn-secondary btn-sm" id="clear-btn">Clear All</button>
+      <div class="hint">Drag to place · Scroll to zoom · Right-drag to pan · Click to select</div>
+    </div>
+    <div class="canvas-scroll" id="canvas-wrap">
+      <canvas id="builder-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script src="js/builder.js"></script>
+</body>
+</html>

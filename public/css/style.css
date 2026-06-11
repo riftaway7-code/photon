@@ -13,16 +13,22 @@
 }
 
 #page-transition.pt-visible {
-  opacity: 1;
+  animation: ptFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events: all;
 }
 
 #page-transition.pt-out {
-  animation: ptFadeOut 0.3s ease forwards;
+  animation: ptFadeOut 0.38s cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes ptFadeIn {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes ptFadeOut {
-  to { opacity: 0; }
+  to { opacity: 0; transform: scale(0.95); }
 }
 
 .pt-spinner {
@@ -244,11 +250,31 @@ body {
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: color 0.2s, background 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s;
 }
 
-.nav-link:hover { color: var(--text); background: var(--surface); }
-.nav-link.active { color: var(--accent-bright); background: rgba(124, 58, 237, 0.12); }
+.nav-link:hover {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.nav-link.active {
+  color: var(--accent-bright);
+  background: rgba(124, 58, 237, 0.12);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2);
+}
+
+.nav-new {
+  color: #22c55e !important;
+  background: rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
+}
+
+.nav-new:hover {
+  color: #4ade80 !important;
+  background: rgba(34, 197, 94, 0.18);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.35);
+}
 
 main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 
@@ -353,13 +379,13 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
   border-radius: var(--radius);
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, box-shadow 0.3s;
 }
 
 .game-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px) scale(1.02);
   border-color: var(--accent);
-  box-shadow: 0 8px 32px rgba(124, 58, 237, 0.25);
+  box-shadow: 0 14px 40px rgba(124, 58, 237, 0.3);
 }
 
 .game-thumbnail {
@@ -790,3 +816,4 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
   border: 1px solid rgba(255,255,255,0.1);
 }
 .blocked-label p { margin: 0; font-size: 1rem; }
+

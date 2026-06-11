@@ -59,6 +59,22 @@
       margin-bottom: 1rem;
     }
 
+    .home-face-wrap {
+      position: relative;
+      display: inline-block;
+    }
+
+    .home-face {
+      position: absolute;
+      left: 50%;
+      top: 88%;
+      transform: translateX(-50%) rotate(-90deg);
+      font-size: 0.3em;
+      font-weight: 700;
+      letter-spacing: 0;
+      opacity: 0.7;
+    }
+
     .home-sub {
       font-size: 1.15rem;
       color: var(--text-muted);
@@ -112,6 +128,31 @@
       text-align: center;
     }
 
+    .home-card-new {
+      border-color: rgba(34, 197, 94, 0.3);
+      position: relative;
+    }
+
+    .home-card-new:hover {
+      border-color: #22c55e;
+      box-shadow: 0 12px 40px rgba(34, 197, 94, 0.25);
+    }
+
+    .home-card-new .home-card-icon { color: #22c55e; }
+
+    .home-card-badge {
+      position: absolute;
+      top: -10px;
+      right: 12px;
+      background: #22c55e;
+      color: #000;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 2px 7px;
+      border-radius: 20px;
+    }
+
     .live-count {
       display: inline-flex;
       align-items: center;
@@ -149,12 +190,13 @@
       <a href="/browser.html" class="nav-link">Browser</a>
       <a href="/chat.html" class="nav-link">Chat</a>
       <a href="/settings.html" class="nav-link">Settings</a>
+      <a href="/tension/" class="nav-link nav-new">(NEW!) Tension</a>
     </div>
   </nav>
 
   <main class="home-main">
     <span class="material-symbols-rounded home-logo">flare</span>
-    <h1 class="home-title"><span class="glow">photon</span></h1>
+    <h1 class="home-title"><span class="glow">ph<span class="home-face-wrap">oton<span class="home-face">D</span></span></span></h1>
     <div class="live-count">
       <span class="live-dot"></span>
       <span id="liveCount">—</span> online now
@@ -173,6 +215,12 @@
       <a href="/chat.html" class="home-card">
         <span class="material-symbols-rounded home-card-icon">chat</span>
         <span class="home-card-label">Chat</span>
+      </a>
+      <a href="/tension/" class="home-card home-card-new">
+        <span class="material-symbols-rounded home-card-icon">sports_martial_arts</span>
+        <span class="home-card-label">Tension</span>
+        <span class="home-card-desc">Multiplayer obby · answer right or fall</span>
+        <span class="home-card-badge">NEW</span>
       </a>
     </div>
   </main>
